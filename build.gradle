@@ -1,0 +1,93 @@
+// Forge port of Earthcomputer/clientcommands for Minecraft 26.2 / Forge 65.0.9.
+// Ported logic keeps its original net.earthcomputer.clientcommands package so future
+// upstream diffs stay easy to compare against.
+
+plugins {
+    id 'java'
+    id 'idea'
+    id 'eclipse'
+    id 'net.minecraftforge.gradle' version '[7.0.17,8)'
+    id 'net.minecraftforge.jarjar' version '0.2.3'
+}
+
+version = project.mod_version
+group = 'net.earthcomputer.clientcommands'
+base.archivesName = mod_id
+
+// Mojang ships Java 25 to end users in 26.1+, so target Java 25.
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+
+minecraft {
+    runs {
+        configureEach {
+            workingDir = layout.projectDirectory.dir('run')
+            systemProperty 'eventbus.api.strictRuntimeChecks', 'true'
+            // Mixin requires either specifying the config via command line, or in the Manifest.
+            // The manifest attribute below only applies to the built jar, so pass it explicitly
+            // for runs launched straight from the dev environment too.
+            args "--mixin.config=${mod_id}.mixins.json"
+        }
+
+        register('client') {
+            if (org.gradle.internal.os.OperatingSystem.current().isMacOsX()) {
+                // LWJGL/GLFW requires the JVM's main thread to be the OS's first thread on macOS.
+                jvmArgs.add('-XstartOnFirstThread')
+            }
+        }
+
+        register('server') {
+            args '--nogui'
+        }
+    }
+}
+
+repositories {
+    minecraft.mavenizer(it)
+    maven fg.forgeMaven
+    maven fg.minecraftLibsMaven
+    mavenCentral()
+    maven { url = 'https://maven.seedfinding.com' }
+    maven { url = 'https://maven.latticg.com' }
+}
+
+jarJar.register()
+tasks.named('jar') {
+    archiveClassifier = 'slim'
+    manifest {
+        // Add our mixin config to the manifest so Mixin detects it at runtime from the built jar.
+        attributes['MixinConfigs'] = "${mod_id}.mixins.json"
+    }
+}
+tasks.named('jarJar') {
+    archiveClassifier = null
+}
+
+dependencies {
+    implementation minecraft.dependency("net.minecraftforge:forge:${minecraft_version}-${forge_version}")
+    annotationProcessor 'org.spongepowered:mixin:0.8.7:processor'
+
+    // MixinExtras: mixinextras-common puts the annotations/classes used directly in mixin source
+    // (@WrapOperation, @Local, @Expression, ...) on the compile classpath only (compileOnly, not
+    // implementation) - mixinextras-forge embeds its own shaded copy of these same classes for
+    // runtime, and having both on the runtime module path at once is a split-package conflict.
+    compileOnly "io.github.llamalad7:mixinextras-common:${mixinextras_version}"
+    annotationProcessor "io.github.llamalad7:mixinextras-common:${mixinextras_version}"
+    jarJar("io.github.llamalad7:mixinextras-forge:${mixinextras_version}")
+
+    // Seed-cracking math libraries used verbatim from upstream clientcommands. These are plain
+    // Java libraries (no Fabric dependency). The full jars are needed on the compile classpath;
+    // latticg additionally ships a slimmed-down ":rt" runtime-only jar (no compile-time API
+    // surface) which is what's actually embedded in the shipped mod, matching upstream's own
+    // codeGenImplementation (full)/includedLibrary (:rt) split.
+    implementation "com.seedfinding:mc_core:${seedfinding_core_version}"
+    implementation "com.seedfinding:mc_seed:${seedfinding_seed_version}"
+    implementation "com.seedfinding:latticg:${latticg_version}"
+
+    jarJar("com.seedfinding:mc_core:${seedfinding_core_version}")
+    jarJar("com.seedfinding:mc_seed:${seedfinding_seed_version}")
+    jarJar("com.seedfinding:latticg:${latticg_version}:rt")
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
