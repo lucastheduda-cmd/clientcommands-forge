@@ -1,3 +1,5 @@
+**Warning:** This mod may contain bugs!
+
 # clientcommands-forge
 
 An unofficial Forge port of [Earthcomputer/clientcommands](https://github.com/Earthcomputer/clientcommands)
